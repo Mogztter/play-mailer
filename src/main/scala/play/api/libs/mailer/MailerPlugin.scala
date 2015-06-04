@@ -6,15 +6,20 @@ import javax.mail.internet.InternetAddress
 
 import org.apache.commons.mail._
 import play.api.inject._
+import play.api.libs.json.Json
+import play.api.libs.ws.{WSResponse, WS}
 import play.api.{PlayConfig, Logger, Configuration, Environment}
 import play.libs.mailer.{MailerClient => JMailerClient, Email => JEmail}
+import scala.concurrent.duration._
 
 import scala.collection.JavaConverters._
+import scala.concurrent.Await
 
 class MailerModule extends Module {
   def bindings(environment: Environment, configuration: Configuration) = Seq(
     bind[MailerClient].to[CommonsMailer],
     bind[JMailerClient].to(bind[MailerClient]),
+    bind[MandrillMailer].qualifiedWith("mandrill").to(bind[MandrillMailer]),
     bind[MailerClient].qualifiedWith("mock").to[MockMailer],
     bind[JMailerClient].qualifiedWith("mock").to[MockMailer]
   )
@@ -226,6 +231,39 @@ abstract class SMTPMailer(smtpHost: String, smtpPort: Int,
           setter(emailAddress, null)
       }
     }
+  }
+}
+
+class MandrillMailer @Inject()(configuration: Configuration) extends MailerClient {
+
+  private val MANDRILL_API_BASE_URL = "https://mandrillapp.com/api/1.0"
+  private val mandrillConfig = PlayConfig(configuration).get[PlayConfig]("play.mailer.mandrill")
+
+  override def send(data: Email): String = {
+    val apiKey = mandrillConfig.get[String]("apikey")
+    val to = Json.arr(data.to.map {
+      address => Json.obj(
+        "email" -> address,
+        "name" -> "",
+        "type" -> "to"
+      )
+    })
+    val json = Json.obj(
+      "key" -> apiKey,
+      "message" -> Json.obj(
+        "html" -> data.bodyHtml.getOrElse(""),
+        "text" -> data.bodyText.getOrElse(""),
+        "subject" -> data.subject,
+        "from_email" -> data.from,
+        "from_name" -> data.from,
+        "to" -> to,
+        "bcc_address" -> data.bcc.mkString(";")
+      ),
+      "async" -> false
+    )
+    val result: WSResponse = Await.result(WS.url(MANDRILL_API_BASE_URL + "/messages/send.json").post(json), 30.seconds)
+    play.Logger.info("" + result.json)
+    ""
   }
 }
 

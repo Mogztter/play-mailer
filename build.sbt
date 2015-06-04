@@ -5,6 +5,7 @@ val PlayVersion = playVersion("2.4.0")
 
 libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play" % PlayVersion % Provided,
+  "com.typesafe.play" %% "play-ws" % PlayVersion % Provided,
   "org.apache.commons" % "commons-email" % "1.3.3",
   "com.typesafe.play" %% "play-specs2" % PlayVersion % Test
 )
